@@ -1,56 +1,86 @@
-//#pragma once
-#ifndef CHATINFO_H
-#define CHATINFO_H
+#ifndef CHATLIST_H
+#define CHATLIST_H
 
-#include <event.h>
-#include <list>
-#include "chat_database.h"
+#include <QWidget>
+#include <QTcpSocket>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMessageBox>
+#include <QList>
+#include "addfriend.h"
+#include "creategroup.h"
+#include "addgroup.h"
+#include "sendthread.h"
+#include "recvthread.h"
 
-using namespace std;
+class GroupChat;
+#include "groupchat.h"
 
-#define MAXNUM    1024     //表示群最大个数
+class PrivateChat;
+#include "privatechat.h"
 
-struct User               // 在线用户类
+namespace Ui {
+class Chatlist;
+}
+
+struct ChatWidgetInfo
 {
-	string name;		  // 在线用户名
-	struct bufferevent* bev; // 每个在线用户的缓冲区对象
+    PrivateChat *w;
+    QString name;
 };
-typedef struct User User;
 
-struct GroupUser	// 群成员类
+struct groupWidgetInfo
 {
-	string name;
+    GroupChat *w;
+    QString name;
 };
 
-typedef struct GroupUser GroupUser;
-
-struct Group	//群聊类
+class Chatlist : public QWidget
 {
-	string name;	// 群聊名称
-	list<GroupUser>* l; // 群聊中群成员链表
-};
-typedef struct Group Group;
-
-class Server;
-
-class ChatInfo
-{
-	friend class Server; // 声明Server是链表类ChatInfo的友元类，可以访问ChatInfo中的的隐藏信息（包括私有成员和保护成员）。
-private:
-	list<User>* online_user;     //保存所有在线的用户信息————链表形式
-	list<Group>* group_info;     //保存所有群聊信息————链表
-	ChatDataBase* mydatabase;    //数据库对象
+    Q_OBJECT
 
 public:
-	ChatInfo();
-	~ChatInfo();
+    explicit Chatlist(QTcpSocket *, QString, QString, QString, QWidget *parent = 0);
+    void closeEvent(QCloseEvent *event);
+    ~Chatlist();
 
-	bool info_group_exist(string);
-	bool info_user_in_group(string, string); // 判断该用户string2是否已经在该群聊string1中
-	void info_group_add_user(string, string); // 将用户string2加入到该群聊string1节点的群成员链表中
-	struct bufferevent* info_get_friend_bev(string);
-	string info_get_group_member(string);	  // 获取群聊string2的群成员，返回给string1
-	void info_add_new_group(string, string); // 将新建群聊（群名为string1，群成员为string2）加入到群信息链表中
+private slots:
+    void server_reply();
+
+    void on_addButton_clicked();
+
+    void on_createGroupButton_clicked();
+
+    void on_addGroupButton_clicked();
+
+    void on_friendList_double_clicked();
+
+    void on_groupList_double_clicked();
+
+signals:
+    void signal_to_sub_widget(QJsonObject);
+    void signal_to_sub_widget_member(QJsonObject);
+    void signal_to_sub_widget_group(QJsonObject);
+
+private:
+    void client_login_reply(QString);
+    void client_add_friend_reply(QJsonObject &obj);
+    void client_create_group_reply(QJsonObject &obj);
+    void client_add_group_reply(QJsonObject &obj);
+    void client_private_chat_reply(QString);
+    void client_chat_reply(QJsonObject &);
+    void client_get_group_member_reply(QJsonObject);
+    void client_group_chat_reply(QJsonObject);
+    void client_send_file_reply(QString);
+    void client_send_file_port_reply(QJsonObject);
+    void client_recv_file_port_reply(QJsonObject);
+    void client_friend_offline(QString fri);
+
+    Ui::Chatlist *ui;
+    QTcpSocket *socket;
+    QString userName;
+    QList<ChatWidgetInfo> chatWidgetList;
+    QList<groupWidgetInfo> groupWidgetList;
 };
 
-#endif
+#endif // CHATLIST_H

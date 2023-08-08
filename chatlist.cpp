@@ -1,152 +1,297 @@
 #include "chatlist.h"
+#include "ui_chatlist.h"
 
-ChatInfo::ChatInfo()
+Chatlist::Chatlist(QTcpSocket *s, QString fri, QString group, QString u, QWidget *parent) :
+    QWidget(parent),
+    ui(new Ui::Chatlist)
 {
-	online_user = new list<User>; // ³õÊ¼»¯Á´±í
+    ui->setupUi(this);
+    userName = u;
+    socket = s;
+    connect(socket, &QTcpSocket::readyRead, this, &Chatlist::server_reply);
 
-	group_info = new list<Group>;
+    QStringList friList = fri.split('|');
+    for (int i = 0; i < friList.size(); i++)
+    {
+        if (friList.at(i) != "")
+        {
+            ui->friendList->addItem(friList.at(i));
+        }
+    }
 
-	//Íùgroup_infoÁ´±íÖĞÌí¼ÓÈºĞÅÏ¢
-	mydatabase = new ChatDataBase; // ´´½¨Ò»¸öÊı¾İ¿â¶ÔÏó
-	mydatabase->my_database_connect("chatgroup"); // Á¬½ÓÉÏchatgroupÈºÁÄÊı¾İ¿â
+    QStringList groList = group.split('|');
+    for (int i = 0; i < groList.size(); i++)
+    {
+        if (groList.at(i) != "")
+        {
+            ui->groupList->addItem(groList.at(i));
+        }
+    }
 
-	string group_name[MAXNUM];
-	int group_num = mydatabase->my_database_get_group_name(group_name);// »ñÈ¡ÉÏÒ»²½Á¬½ÓÉÏµÄchatgroupÊı¾İ¿âÖĞµÄÈºÁÄµÄ¸öÊıgroup_numºÍÃ¿¸öÈºÁÄµÄÃû×ÖÊı×égroup_name
-
-	for (int i = 0; i < group_num; i++)//½«chatgroupÊı¾İ¿âÖĞËùÓĞÈºÁÄĞÅÏ¢²åÈëµ½ÈºĞÅÏ¢Á´±íÖĞ
-	{
-		Group g; //´´½¨Ò»¸öÈºÁÄ¶ÔÏó
-		g.name = group_name[i];
-		g.l = new list<GroupUser>;    //±£´æÈºÖĞËùÓĞÓÃ»§¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ªÁ´±íĞÎÊ½
-
-		group_info->push_back(g);
-
-		string member;              //±£´æÈºÀïËùÓĞÓÃ»§
-		mydatabase->my_database_get_group_member(group_name[i], member); // group_name[i]Ä³Ò»ÈºÁÄÃû×Ö£¬½«¸ÃÈºÁÄÖĞµÄÈº³ÉÔ±·Åµ½×Ö·û´®memberÖĞ
-		if (member.size() == 0)    //string member = Ğ¡Ã÷|Ğ¡Àî|Ğ¡ÕÅ
-		{
-			continue;
-		}
-
-		int start = 0, end = 0;
-		GroupUser u; // Èº³ÉÔ±Àà´´½¨Ò»¸öÈº³ÉÔ±¶ÔÏó£¨Ö»ÓĞÒ»¸öname£©
-		while (1)
-		{
-			end = member.find('|', start);
-			if (-1 == end)
-			{
-				break;
-			}
-			u.name = member.substr(start, end - start);
-			g.l->push_back(u);// ½«½ØÈ¡µ½µÄÄ³Ò»ÈºÁÄ³ÉÔ±²åÈëµ½ÈºÁÄ³ÉÔ±Á´±íÖĞ
-			start = end + 1;
-			u.name.clear();
-		}
-		u.name = member.substr(start, member.size() - start);//½«memberÖĞ×îºóÒ»¸öÈºÁÄ³ÉÔ±¡°Ğ¡ÕÅ¡±Ò²²åÈëµ½Á´±íÖĞ
-		g.l->push_back(u);
-
-	}
-
-	/*for (list<Group>::iterator it = group_info->begin(); it != group_info->end(); it++)
-	{
-		cout << "ÈºÃû×Ö " << it->name << endl;
-		for (list<GroupUser>::iterator i = it->l->begin(); i != it->l->end(); i++)
-		{
-			cout << i->name << endl;
-		}
-	}*/
-
-	mydatabase->my_database_disconnect(); // Ê¹ÓÃÍêµ±Ç°Êı¾İ¿âºó¶Ï¿ªÁ¬½Ó£¬·½±ãÏÂÒ»´ÎÁ¬½Ó
-
-	cout << "³õÊ¼»¯Á´±í³É¹¦" << endl;
+    connect(ui->friendList, &QListWidget::itemDoubleClicked, this, &Chatlist::on_friendList_double_clicked);
+    connect(ui->groupList, &QListWidget::itemDoubleClicked, this, &Chatlist::on_groupList_double_clicked);
 }
 
-bool ChatInfo::info_group_exist(string group_name)
+Chatlist::~Chatlist()
 {
-	for (list<Group>::iterator it = group_info->begin(); it != group_info->end(); it++)
-	{
-		if (it->name == group_name)
-		{
-			return true;
-		}
-	}
-	return false;
+    delete ui;
 }
 
-// ÅĞ¶ÏÓÃ»§ÊÇ·ñÒÑ¾­ÔÚ¸ÃÈºÁÄÀï
-bool ChatInfo::info_user_in_group(string group_name, string user_name)
+void Chatlist::server_reply()
 {
-	for (list<Group>::iterator it = group_info->begin(); it != group_info->end(); it++)
-	{
-		if (it->name == group_name) // ÕÒµ½¸ÃÈºÁÄ
-		{
-			// ±éÀú¸ÃÈºÁÄµÄÈº³ÉÔ±Á´±í£¬Óë¸ÃÓÃ»§ĞÕÃûÒ»Ò»±È¶Ô
-			for (list<GroupUser>::iterator i = it->l->begin(); i != it->l->end(); i++) 
-			{
-				if (i->name == user_name)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
+    QByteArray ba = socket->readAll();
+    QJsonObject obj = QJsonDocument::fromJson(ba).object();
+    QString cmd = obj.value("cmd").toString();
+    if (cmd == "friend_login")
+    {
+        client_login_reply(obj.value("friend").toString());
+    }
+    else if (cmd == "add_reply")
+    {
+        client_add_friend_reply(obj);
+    }
+    else if (cmd == "add_friend_reply")
+    {
+        QString str = QString("%1æŠŠä½ æ·»åŠ ä¸ºå¥½å‹").arg(obj.value("result").toString());
+        QMessageBox::information(this, "æ·»åŠ å¥½å‹æé†’", str);
+        ui->friendList->addItem(obj.value("result").toString());
+    }
+    else if (cmd == "create_group_reply")
+    {
+        client_create_group_reply(obj);
+    }
+    else if (cmd == "add_group_reply")
+    {
+        client_add_group_reply(obj);
+    }
+    else if (cmd == "private_chat_reply")
+    {
+        client_private_chat_reply(obj.value("result").toString());
+    }
+    else if (cmd == "private_chat")
+    {
+        client_chat_reply(obj);
+    }
+    else if (cmd == "get_group_member_reply")
+    {
+        client_get_group_member_reply(obj);
+    }
+    else if (cmd == "group_chat")
+    {
+        client_group_chat_reply(obj);
+    }
+    else if (cmd == "send_file_reply")
+    {
+        client_send_file_reply(obj.value("result").toString());
+    }
+    else if (cmd == "send_file_port_reply")
+    {
+        client_send_file_port_reply(obj);
+    }
+    else if (cmd == "recv_file_port_reply")
+    {
+        client_recv_file_port_reply(obj);
+    }
+    else if (cmd == "friend_offline")
+    {
+        client_friend_offline(obj.value("friend").toString());
+    }
 }
 
-// ½«ÓÃ»§string2¼ÓÈëµ½¸ÃÈºÁÄ½ÚµãµÄÈº³ÉÔ±Á´±íÖĞ
-void ChatInfo::info_group_add_user(string group_name, string user_name)
+void Chatlist::client_login_reply(QString fri)
 {
-	for (list<Group>::iterator it = group_info->begin(); it != group_info->end(); it++)
-	{
-		if (it->name == group_name)
-		{
-			GroupUser u; // ĞÂ½¨Ò»¸öÈº³ÉÔ±½Úµã
-			u.name = user_name;
-			it->l->push_back(u);
-		}
-	}
+    QString str = QString("%1å¥½å‹ä¸Šçº¿").arg(fri);
+    QMessageBox::information(this, "å¥½å‹ä¸Šçº¿æé†’", str);
 }
 
-struct bufferevent* ChatInfo::info_get_friend_bev(string name)
+void Chatlist::client_add_friend_reply(QJsonObject &obj)
 {
-	for (list<User>::iterator it = online_user->begin(); it != online_user->end(); it++)
-	{
-		if (it->name == name)
-		{
-			return it->bev;
-		}
-	}
-	return NULL;
+    if (obj.value("result").toString() == "user_not_exist")
+    {
+        QMessageBox::warning(this, "æ·»åŠ å¥½å‹æé†’", "å¥½å‹ä¸å­˜åœ¨");
+    }
+    else if (obj.value("result").toString() == "already_friend")
+    {
+        QMessageBox::warning(this, "æ·»åŠ å¥½å‹æé†’", "å·²ç»æ˜¯å¥½å‹å…³ç³»");
+    }
+    else if (obj.value("result").toString() == "success")
+    {
+        QMessageBox::information(this, "æ·»åŠ å¥½å‹æé†’", "å¥½å‹æ·»åŠ æˆåŠŸ");
+        ui->friendList->addItem(obj.value("friend").toString());
+    }
 }
 
-// »ñÈ¡ÈºÁÄgroupµÄÈº³ÉÔ±£¬·µ»Ø¸østring1
-string ChatInfo::info_get_group_member(string group)
+void Chatlist::client_create_group_reply(QJsonObject &obj)
 {
-	string member;
-	for (list<Group>::iterator it = group_info->begin(); it != group_info->end(); it++)
-	{
-		if (group == it->name)
-		{
-			for (list<GroupUser>::iterator i = it->l->begin(); i != it->l->end(); i++)
-			{
-				member += i->name;
-				member += "|";
-			}
-		}
-	}
-	return member;
+    if (obj.value("result").toString() == "group_exist")
+    {
+        QMessageBox::warning(this, "åˆ›å»ºç¾¤æç¤º", "ç¾¤å·²ç»å­˜åœ¨");
+    }
+    else if (obj.value("result").toString() == "success")
+    {
+        ui->groupList->addItem(obj.value("group").toString());
+    }
 }
 
-// ½«ĞÂ½¨ÈºÁÄ£¨ÈºÃûÎªstring1£¬Èº³ÉÔ±Îªstring2£©¼ÓÈëµ½ÈºĞÅÏ¢Á´±íÖĞ
-void ChatInfo::info_add_new_group(string group_name, string user_name)
+void Chatlist::client_add_group_reply(QJsonObject &obj)
 {
-	Group g; // ÈºÁÄÀà½Úµã
-	g.name = group_name;
-	g.l = new list<GroupUser>; // Èº³ÉÔ±Á´±í
-	group_info->push_back(g); // ½«¸ÃĞÂ½¨ÈºÁÄ½Úµã¼ÓÈëÈºĞÅÏ¢Á´±íÖĞ
+    if (obj.value("result").toString() == "group_not_exist")
+    {
+        QMessageBox::warning(this, "æ·»åŠ ç¾¤æç¤º", "ç¾¤ä¸å­˜åœ¨");
+    }
+    else if (obj.value("result").toString() == "user_in_group")
+    {
+        QMessageBox::warning(this, "æ·»åŠ ç¾¤æç¤º", "å·²ç»åœ¨ç¾¤é‡Œé¢");
+    }
+    else if (obj.value("result").toString() == "success")
+    {
+        ui->groupList->addItem(obj.value("group").toString());
+    }
+}
 
-	GroupUser u; 
-	u.name = user_name;
-	g.l->push_back(u); // ½«ÈºÖ÷¼Óµ½Èº³ÉÔ±Á´±íÖĞ
+void Chatlist::client_private_chat_reply(QString res)
+{
+    if (res == "offline")
+    {
+        QMessageBox::warning(this, "å‘é€æé†’", "å¯¹æ–¹ä¸åœ¨çº¿");
+    }
+}
+
+void Chatlist::client_chat_reply(QJsonObject &obj)
+{
+    int flag = 0;
+    for (int i = 0; i < chatWidgetList.size(); i++)
+    {
+        if (chatWidgetList.at(i).name == obj.value("user_from").toString())
+        {
+            flag = 1;
+            break;
+        }
+    }
+
+    if (flag == 0)   //èŠå¤©çª—å£æ²¡æœ‰æ‰“å¼€è¿‡
+    {
+        QString friendName = obj.value("user_from").toString();
+        PrivateChat *privateChatWidget = new PrivateChat(socket, userName, friendName, this, &chatWidgetList);
+        privateChatWidget->setWindowTitle(friendName);
+        privateChatWidget->show();
+
+        ChatWidgetInfo c = {privateChatWidget, friendName};
+        chatWidgetList.push_back(c);
+    }
+
+    emit signal_to_sub_widget(obj);
+}
+
+void Chatlist::client_get_group_member_reply(QJsonObject obj)
+{
+    emit signal_to_sub_widget_member(obj);
+}
+
+void Chatlist::client_group_chat_reply(QJsonObject obj)
+{
+    int flag = 0;
+    for (int i = 0; i < groupWidgetList.size(); i++)
+    {
+        if (groupWidgetList.at(i).name == obj.value("group").toString())
+        {
+            flag = 1;
+            break;
+        }
+    }
+
+    if(flag == 0)
+    {
+        QString groupName = obj.value("group").toString();
+        GroupChat *groupChatWidget = new GroupChat(socket, groupName, userName, this, &groupWidgetList);
+        groupChatWidget->setWindowTitle(groupName);
+        groupChatWidget->show();
+
+        groupWidgetInfo g = {groupChatWidget, groupName};
+        groupWidgetList.push_back(g);
+    }
+
+    emit signal_to_sub_widget_group(obj);
+}
+
+void Chatlist::client_send_file_reply(QString res)
+{
+    if (res == "offline")
+    {
+        QMessageBox::warning(this, "å‘é€æ–‡ä»¶æé†’", "å¯¹æ–¹ä¸åœ¨çº¿");
+    }
+    else if (res == "timeout")
+    {
+        QMessageBox::warning(this, "å‘é€æ–‡ä»¶æé†’", "è¿æ¥è¶…æ—¶");
+    }
+}
+
+void Chatlist::client_send_file_port_reply(QJsonObject obj)
+{
+    SendThread *mySendthread = new SendThread(obj);
+    mySendthread->start();
+}
+
+void Chatlist::client_recv_file_port_reply(QJsonObject obj)
+{
+    RecvThread *myRecvThread = new RecvThread(obj);
+    myRecvThread->start();
+}
+
+void Chatlist::client_friend_offline(QString fri)
+{
+    QString str = QString("%1ä¸‹çº¿").arg(fri);
+    QMessageBox::information(this, "ä¸‹çº¿æé†’", str);
+}
+
+void Chatlist::on_addButton_clicked()
+{
+    Addfriend *addFriendWidget = new Addfriend(socket, userName);
+    addFriendWidget->show();
+}
+
+void Chatlist::on_createGroupButton_clicked()
+{
+    CreateGroup *createGroupWidget = new CreateGroup(socket, userName);
+    createGroupWidget->show();
+}
+
+void Chatlist::on_addGroupButton_clicked()
+{
+    AddGroup *addGroupWidget = new AddGroup(socket, userName);
+    addGroupWidget->show();
+}
+
+void Chatlist::on_friendList_double_clicked()
+{
+    QString friendName = ui->friendList->currentItem()->text();
+    PrivateChat *privateChatWidget = new PrivateChat(socket, userName, friendName, this, &chatWidgetList);
+    privateChatWidget->setWindowTitle(friendName);
+    privateChatWidget->show();
+
+    ChatWidgetInfo c = {privateChatWidget, friendName};
+    chatWidgetList.push_back(c);
+}
+
+void Chatlist::on_groupList_double_clicked()
+{
+    QString groupName = ui->groupList->currentItem()->text();
+    GroupChat *groupChatWidget = new GroupChat(socket, groupName, userName, this, &groupWidgetList);
+    groupChatWidget->setWindowTitle(groupName);
+    groupChatWidget->show();
+
+    groupWidgetInfo g = {groupChatWidget, groupName};
+    groupWidgetList.push_back(g);
+}
+
+void Chatlist::closeEvent(QCloseEvent *event)
+{
+    QJsonObject obj;
+    obj.insert("cmd", "offline");
+    obj.insert("user", userName);
+    QByteArray ba = QJsonDocument(obj).toJson();
+    socket->write(ba);
+    socket->flush();
+
+    event->accept();
 }

@@ -1,10 +1,11 @@
-#include<iostream>
-#include"server.h"
-using namespace std;
+#include "widget.h"
+#include <QApplication>
 
-int main()
+int main(int argc, char *argv[])
 {
-	// 创建服务器对象
-	Server s(IP, PORT);
-	return 0;
+    QApplication a(argc, argv);
+    Widget w;
+    w.show();
+
+    return a.exec();
 }
